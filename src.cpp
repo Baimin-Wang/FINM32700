@@ -61,5 +61,9 @@ int main(){
     delete[] result_row;
     delete[] result_col;
 
+
+
+    // Testing for function 3 and 4:
+
     return 0;
 }
