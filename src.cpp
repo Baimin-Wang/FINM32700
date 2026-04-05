@@ -1,10 +1,18 @@
+#include <chrono>
+#include <cmath>
 #include <iostream>
+#include <numeric>
 #include <vector>
+#include <cstdlib>
 
 using namespace std;
 
 void multiply_mv_row_major(const double *matrix, int rows, int cols,
                            const double *vector, double *result) {
+  if (!matrix || !vector || !result) {
+    cerr << "Error: Null pointer input to multiply_mv_row_major" << endl;
+    return;
+  }
   for (int i = 0; i < rows; i++) {
     result[i] = 0.0;
     for (int j = 0; j < cols; j++) {
@@ -15,6 +23,10 @@ void multiply_mv_row_major(const double *matrix, int rows, int cols,
 
 void multiply_mv_col_major(const double *matrix, int rows, int cols,
                            const double *vector, double *result) {
+  if (!matrix || !vector || !result) {
+    cerr << "Error: Null pointer input to multiply_mv_col_major" << endl;
+    return;
+  }
   for (int i = 0; i < rows; i++) {
     result[i] = 0.0;
     for (int j = 0; j < cols; j++) {
@@ -26,6 +38,14 @@ void multiply_mv_col_major(const double *matrix, int rows, int cols,
 void multiply_mm_naive(const double *matrixA, int rowsA, int colsA,
                        const double *matrixB, int rowsB, int colsB,
                        double *result) {
+  if (!matrixA || !matrixB || !result) {
+    cerr << "Error: Null pointer input to multiply_mm_naive" << endl;
+    return;
+  }
+  if (colsA != rowsB) {
+    cerr << "Error: Incompatible dimensions for matrix multiplication" << endl;
+    return;
+  }
   for (int i = 0; i < rowsA; ++i) {
     for (int j = 0; j < colsB; ++j) {
       result[i * colsB + j] = 0.0;
@@ -40,6 +60,14 @@ void multiply_mm_naive(const double *matrixA, int rowsA, int colsA,
 void multiply_mm_transposed_b(const double *matrixA, int rowsA, int colsA,
                               const double *matrixB_transposed, int rowsB,
                               int colsB, double *result) {
+  if (!matrixA || !matrixB_transposed || !result) {
+    cerr << "Error: Null pointer input to multiply_mm_transposed_b" << endl;
+    return;
+  }
+  if (colsA != rowsB) {
+    cerr << "Error: Incompatible dimensions for matrix multiplication" << endl;
+    return;
+  }
   for (int i = 0; i < rowsA; ++i) {
     for (int j = 0; j < colsB; ++j) {
       result[i * colsB + j] = 0.0;
@@ -49,6 +77,24 @@ void multiply_mm_transposed_b(const double *matrixA, int rowsA, int colsA,
       }
     }
   }
+}
+
+template <typename Func>
+void benchmark(Func f, int N, double &mean, double &stddev) {
+  vector<double> times(N);
+  for (int i = 0; i < N; ++i) {
+    auto start = chrono::high_resolution_clock::now();
+    f();
+    auto end = chrono::high_resolution_clock::now();
+    times[i] = chrono::duration<double>(end - start).count();
+  }
+  mean = accumulate(times.begin(), times.end(), 0.0) / N;
+  double variance = accumulate(times.begin(), times.end(), 0.0,
+                               [mean](double acc, double t) {
+                                 return acc + (t - mean) * (t - mean);
+                               }) /
+                    N;
+  stddev = sqrt(variance);
 }
 
 int main() {
@@ -125,6 +171,158 @@ int main() {
   delete[] matB_T;
   delete[] result_naive;
   delete[] result_transposed;
+
+  // Benchmarking
+  cout << "\n--- Benchmarking ---\n";
+  cout << "Size\t\tmv_row(us)\tmv_col(us)\tmm_naive(us)\tmm_transposed(us)\n";
+
+  for (int n : {32, 128, 512, 1024}) {
+    double mean, stddev;
+    int runs = 20;
+
+    // mv row major
+    double *mvA_row = new double[n * n];
+    double *mvVec_row = new double[n];
+    double *mvRes_row = new double[n];
+    for (int i = 0; i < n * n; i++)
+      mvA_row[i] = 1.0;
+    for (int i = 0; i < n; i++)
+      mvVec_row[i] = 1.0;
+    benchmark(
+        [&]() { multiply_mv_row_major(mvA_row, n, n, mvVec_row, mvRes_row); },
+        runs, mean, stddev);
+    volatile double dummy = mvRes_row[0]; // prevent optimization
+    (void)dummy; // silence unused variable warning
+    cout << n << "x" << n << "\t\t" << mean * 1e6;
+    delete[] mvA_row;
+    delete[] mvVec_row;
+    delete[] mvRes_row;
+
+    // mv col major
+    double *mvA_col = new double[n * n];
+    double *mvVec_col = new double[n];
+    double *mvRes_col = new double[n];
+    for (int i = 0; i < n * n; i++)
+      mvA_col[i] = 1.0;
+    for (int i = 0; i < n; i++)
+      mvVec_col[i] = 1.0;
+    benchmark(
+        [&]() { multiply_mv_col_major(mvA_col, n, n, mvVec_col, mvRes_col); },
+        runs, mean, stddev);
+    volatile double dummy2 = mvRes_col[0]; // prevent optimization
+    (void)dummy2; // silence unused variable warning
+    cout << "\t\t" << mean * 1e6;
+    delete[] mvA_col;
+    delete[] mvVec_col;
+    delete[] mvRes_col;
+
+    // mm naive
+    double *mmA = new double[n * n];
+    double *mmB = new double[n * n];
+    double *mmRes = new double[n * n];
+    for (int i = 0; i < n * n; i++)
+      mmA[i] = mmB[i] = 1.0;
+    benchmark([&]() { multiply_mm_naive(mmA, n, n, mmB, n, n, mmRes); }, runs,
+              mean, stddev);
+    volatile double dummy3 = mmRes[0]; // prevent optimization
+    (void)dummy3; // silence unused variable warning
+    cout << "\t\t" << mean * 1e6;
+    delete[] mmA;
+    delete[] mmB;
+    delete[] mmRes;
+
+    // mm transposed b
+    double *mmA2 = new double[n * n];
+    double *mmBT = new double[n * n];
+    double *mmRes2 = new double[n * n];
+    for (int i = 0; i < n * n; i++)
+      mmA2[i] = mmBT[i] = 1.0;
+    benchmark(
+        [&]() { multiply_mm_transposed_b(mmA2, n, n, mmBT, n, n, mmRes2); },
+        runs, mean, stddev);
+    volatile double dummy4 = mmRes2[0]; // prevent optimization
+    (void)dummy4; // silence unused variable warning
+    cout << "\t\t" << mean * 1e6 << "\n";
+    delete[] mmA2;
+    delete[] mmBT;
+    delete[] mmRes2;
+  }
+
+  // Benchmark with aligned memory
+  cout << "\n--- Benchmarking with aligned memory ---\n";
+  cout << "Size\t\tmv_row(us)\tmv_col(us)\tmm_naive(us)\tmm_transposed(us)\n";
+
+  for (int n : {32, 128, 512, 1024}) {
+    double mean, stddev;
+    int runs = 20;
+
+    // mv row major
+    double *mvA_row = (double *)aligned_alloc(64, n * n * sizeof(double));
+    double *mvVec_row = (double *)aligned_alloc(64, n * sizeof(double));
+    double *mvRes_row = (double *)aligned_alloc(64, n * sizeof(double));
+    for (int i = 0; i < n * n; i++)
+      mvA_row[i] = 1.0;
+    for (int i = 0; i < n; i++)
+      mvVec_row[i] = 1.0;
+    benchmark(
+        [&]() { multiply_mv_row_major(mvA_row, n, n, mvVec_row, mvRes_row); },
+        runs, mean, stddev);
+    volatile double dummy = mvRes_row[0]; // prevent optimization
+    (void)dummy; // silence unused variable warning
+    cout << n << "x" << n << "\t\t" << mean * 1e6;
+    free(mvA_row);
+    free(mvVec_row);
+    free(mvRes_row);
+
+    // mv col major
+    double *mvA_col = (double *)aligned_alloc(64, n * n * sizeof(double));
+    double *mvVec_col = (double *)aligned_alloc(64, n * sizeof(double));
+    double *mvRes_col = (double *)aligned_alloc(64, n * sizeof(double));
+    for (int i = 0; i < n * n; i++)
+      mvA_col[i] = 1.0;
+    for (int i = 0; i < n; i++)
+      mvVec_col[i] = 1.0;
+    benchmark(
+        [&]() { multiply_mv_col_major(mvA_col, n, n, mvVec_col, mvRes_col); },
+        runs, mean, stddev);
+    volatile double dummy2 = mvRes_col[0]; // prevent optimization
+    (void)dummy2; // silence unused variable warning
+    cout << "\t\t" << mean * 1e6;
+    free(mvA_col);
+    free(mvVec_col);
+    free(mvRes_col);
+
+    // mm naive
+    double *mmA = (double *)aligned_alloc(64, n * n * sizeof(double));
+    double *mmB = (double *)aligned_alloc(64, n * n * sizeof(double));
+    double *mmRes = (double *)aligned_alloc(64, n * n * sizeof(double));
+    for (int i = 0; i < n * n; i++)
+      mmA[i] = mmB[i] = 1.0;
+    benchmark([&]() { multiply_mm_naive(mmA, n, n, mmB, n, n, mmRes); }, runs,
+              mean, stddev);
+    volatile double dummy3 = mmRes[0]; // prevent optimization
+    (void)dummy3; // silence unused variable warning
+    cout << "\t\t" << mean * 1e6;
+    free(mmA);
+    free(mmB);
+    free(mmRes);
+
+    // mm transposed b
+    double *mmA2 = (double *)aligned_alloc(64, n * n * sizeof(double));
+    double *mmBT = (double *)aligned_alloc(64, n * n * sizeof(double));
+    double *mmRes2 = (double *)aligned_alloc(64, n * n * sizeof(double));
+    for (int i = 0; i < n * n; i++)
+      mmA2[i] = mmBT[i] = 1.0;
+    benchmark(
+        [&]() { multiply_mm_transposed_b(mmA2, n, n, mmBT, n, n, mmRes2); },
+        runs, mean, stddev);
+    volatile double dummy4 = mmRes2[0]; // prevent optimization
+    (void)dummy4; // silence unused variable warning
+    cout << "\t\t" << mean * 1e6 << "\n";
+    free(mmA2);
+    free(mmBT);
+    free(mmRes2);
+  }
 
   return 0;
 }
