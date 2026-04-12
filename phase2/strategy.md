@@ -1,0 +1,5 @@
+# Momentum Strategy
+
+The client maintains a rolling window of the last 3 received prices using a `std::deque<float>`. After each new price arrives, the oldest entry is dropped if the deque exceeds 3 elements. Once 3 prices are available, the client checks for strict monotonic movement: if prices are strictly increasing (`a < b < c`) or strictly decreasing (`a > b > c`), momentum is confirmed and an order is sent for the current price ID. If the prices are flat or mixed (e.g., up then down), the price is ignored and no order is sent.
+
+The rationale is that in HFT, a single price tick can be noise, but three consecutive moves in the same direction suggest a short-term directional trend worth trading. Requiring strict monotonicity (rather than just two consecutive moves) reduces false positives at the cost of fewer trades. When momentum is detected, the client reacts quickly with a 10–60ms delay (vs. the original 100–400ms) to improve the chance of being first. The client also tracks hit and pass counts throughout the session, printing a summary on disconnect.

@@ -1,3 +1,5 @@
 *.exe
 test
 .omc
+phase2/hft_server
+phase2/hft_client
