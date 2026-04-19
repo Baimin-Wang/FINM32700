@@ -1,0 +1,7 @@
+target("phase3")
+    set_kind("binary")
+    set_languages("c++20")
+    add_files("*.cpp")
+    add_cxflags("-fsanitize=address", "-g")
+    add_ldflags("-fsanitize=address")
+    set_rundir("$(projectdir)")
